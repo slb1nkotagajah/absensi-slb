@@ -22,4 +22,14 @@ interface FonnteApi {
     suspend fun checkDevice(
         @Header("Authorization") token: String
     ): Response<ResponseBody>
+
+    @POST("get-whatsapp-group")
+    suspend fun getWhatsAppGroups(
+        @Header("Authorization") token: String
+    ): Response<ResponseBody>
+
+    @POST("fetch-group")
+    suspend fun fetchWhatsAppGroups(
+        @Header("Authorization") token: String
+    ): Response<ResponseBody>
 }

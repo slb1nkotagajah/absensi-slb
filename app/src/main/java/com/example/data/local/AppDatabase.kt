@@ -10,11 +10,13 @@ import com.example.data.local.dao.MessageLogDao
 import com.example.data.local.dao.ScheduleDao
 import com.example.data.local.dao.SettingDao
 import com.example.data.local.dao.TeacherDao
+import com.example.data.local.dao.WhatsAppGroupDao
 import com.example.data.local.entity.AttendanceEntity
 import com.example.data.local.entity.MessageLogEntity
 import com.example.data.local.entity.ScheduleEntity
 import com.example.data.local.entity.SettingEntity
 import com.example.data.local.entity.TeacherEntity
+import com.example.data.local.entity.WhatsAppGroupEntity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -25,9 +27,10 @@ import kotlinx.coroutines.launch
         ScheduleEntity::class,
         AttendanceEntity::class,
         MessageLogEntity::class,
-        SettingEntity::class
+        SettingEntity::class,
+        WhatsAppGroupEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -36,6 +39,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun attendanceDao(): AttendanceDao
     abstract fun messageLogDao(): MessageLogDao
     abstract fun settingDao(): SettingDao
+    abstract fun whatsAppGroupDao(): WhatsAppGroupDao
 
     companion object {
         @Volatile
@@ -56,6 +60,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "absen_guru.db"
                 )
+                    .fallbackToDestructiveMigration()
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)
@@ -115,6 +120,24 @@ abstract class AppDatabase : RoomDatabase() {
                         minute = 30,
                         messageTemplate = "🔔 *PENGINGAT ABSEN PULANG HARI JUMAT*\n\nKepada Yth. Bapak/Ibu *{nama_guru}*,\n\nMengingatkan jam dinas hari Jumat telah selesai pada pukul *{jam}* WIB. Harap segera mengisi absen pulang:\n\n📱 Link: {link_absen}\n\nSelamat berakhir pekan bersama keluarga tercinta! 🙏✨",
                         isEnabled = true
+                    )
+                )
+            }
+
+            val groupDao = database.whatsAppGroupDao()
+            if (groupDao.getGroupCount() == 0) {
+                groupDao.insertGroups(
+                    listOf(
+                        WhatsAppGroupEntity(
+                            name = "Grup Dewan Guru SLB N 1 Kota Gajah",
+                            groupId = "1203630248849@g.us",
+                            description = "Grup WhatsApp resmi dewan guru untuk pengingat presensi"
+                        ),
+                        WhatsAppGroupEntity(
+                            name = "Grup Tenaga Pendidik & Staf",
+                            groupId = "1203630248850@g.us",
+                            description = "Grup koordinasi guru dan tenaga kependidikan"
+                        )
                     )
                 )
             }

@@ -15,6 +15,8 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
+import com.example.data.local.entity.WhatsAppGroupEntity
+
 class AttendanceRepository(
     private val context: Context,
     private val db: AppDatabase = AppDatabase.getInstance(context),
@@ -24,6 +26,7 @@ class AttendanceRepository(
     val schedulesFlow: Flow<List<ScheduleEntity>> = db.scheduleDao().getAllSchedulesFlow()
     val recentLogsFlow: Flow<List<MessageLogEntity>> = db.messageLogDao().getRecentLogsFlow(100)
     val settingsFlow: Flow<List<SettingEntity>> = db.settingDao().getAllSettingsFlow()
+    val whatsAppGroupsFlow: Flow<List<WhatsAppGroupEntity>> = db.whatsAppGroupDao().getAllGroupsFlow()
 
     fun getAttendancesByDate(date: String): Flow<List<AttendanceEntity>> {
         return db.attendanceDao().getAttendancesByDateFlow(date)
@@ -218,6 +221,82 @@ class AttendanceRepository(
         )
 
         return Pair(isSuccess, rawMsg)
+    }
+
+    // WhatsApp Group Management
+    suspend fun getAllWhatsAppGroups(): List<WhatsAppGroupEntity> = db.whatsAppGroupDao().getAllGroups()
+    suspend fun insertWhatsAppGroup(group: WhatsAppGroupEntity): Long = db.whatsAppGroupDao().insertGroup(group)
+    suspend fun deleteWhatsAppGroup(group: WhatsAppGroupEntity) = db.whatsAppGroupDao().deleteGroup(group)
+
+    suspend fun syncGroupsFromFonnte(): Pair<Boolean, String> {
+        val token = getFonnteToken()
+        return when (val result = fonnteRepo.getWhatsAppGroups(token)) {
+            is FonnteResult.Success -> {
+                val groups = result.data
+                if (groups.isNotEmpty()) {
+                    val entities = groups.map {
+                        WhatsAppGroupEntity(
+                            name = it.name.ifBlank { "Grup WA ${it.id}" },
+                            groupId = it.id,
+                            description = if (it.member.isNotBlank()) "${it.member} anggota" else "Sinkron dari Fonnte"
+                        )
+                    }
+                    db.whatsAppGroupDao().insertGroups(entities)
+                    Pair(true, "Berhasil menyinkronkan ${entities.size} grup WhatsApp dari akun Fonnte.")
+                } else {
+                    Pair(true, "Tidak ditemukan grup baru di akun Fonnte.")
+                }
+            }
+            is FonnteResult.Error -> {
+                Pair(false, result.message)
+            }
+        }
+    }
+
+    suspend fun refreshFonnteGroupCache(): Pair<Boolean, String> {
+        val token = getFonnteToken()
+        return when (val result = fonnteRepo.refreshGroupList(token)) {
+            is FonnteResult.Success -> Pair(true, result.data)
+            is FonnteResult.Error -> Pair(false, result.message)
+        }
+    }
+
+    suspend fun sendBroadcastToAllTeachers(messageTemplate: String): Pair<Int, Int> {
+        val teachers = db.teacherDao().getActiveTeachers()
+        if (teachers.isEmpty()) return Pair(0, 0)
+        val token = getFonnteToken()
+        val schoolName = getSetting(AppDatabase.KEY_SCHOOL_NAME, "SLB N 1 KOTA GAJAH")
+        val linkAbsen = getSetting(AppDatabase.KEY_ATTENDANCE_LINK, "https://absensi.sekolah.id/pulang")
+
+        var successCount = 0
+        var failCount = 0
+
+        for (teacher in teachers) {
+            val finalMsg = formatMessage(messageTemplate, teacher.name, schoolName, linkAbsen)
+            val response = fonnteRepo.sendMessage(
+                token = token,
+                target = teacher.whatsappNumber,
+                message = finalMsg
+            )
+            val isSuccess = response is FonnteResult.Success
+            val respRaw = when (response) {
+                is FonnteResult.Success -> response.data.detail ?: response.data.message ?: "Berhasil terkirim"
+                is FonnteResult.Error -> response.message
+            }
+            if (isSuccess) successCount++ else failCount++
+
+            db.messageLogDao().insertLog(
+                MessageLogEntity(
+                    scheduleTitle = "Broadcast ke Semua Guru",
+                    recipient = teacher.whatsappNumber,
+                    recipientName = teacher.name,
+                    messageText = finalMsg,
+                    status = if (isSuccess) "SUKSES" else "GAGAL",
+                    responseRaw = respRaw
+                )
+            )
+        }
+        return Pair(successCount, failCount)
     }
 
     // Reset database to initial sample

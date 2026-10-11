@@ -19,8 +19,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PlayArrow
@@ -29,6 +31,8 @@ import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiOff
+import com.example.ui.components.ChatTargetType
+import com.example.ui.components.SendChatDialog
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -71,13 +75,15 @@ fun DashboardScreen(
     val teachers by viewModel.teachers.collectAsState()
     val schedules by viewModel.schedules.collectAsState()
     val logs by viewModel.recentLogs.collectAsState()
+    val groups by viewModel.whatsAppGroups.collectAsState()
     val fonnteStatus by viewModel.fonnteDeviceStatus.collectAsState()
     val isCheckingDevice by viewModel.isCheckingDevice.collectAsState()
     val deviceCheckError by viewModel.deviceCheckError.collectAsState()
     val isSchedulerActive by viewModel.isSchedulerActive.collectAsState()
     val schoolName by viewModel.schoolName.collectAsState()
 
-    var showTestMessageDialog by remember { mutableStateOf(false) }
+    var showChatDialog by remember { mutableStateOf(false) }
+    var initialChatTargetType by remember { mutableStateOf(ChatTargetType.GROUP) }
 
     LazyColumn(
         modifier = modifier
@@ -268,16 +274,36 @@ fun DashboardScreen(
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Button(
-                            onClick = { showTestMessageDialog = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
-                            modifier = Modifier.testTag("btn_open_test_dialog")
+                            onClick = {
+                                initialChatTargetType = ChatTargetType.GROUP
+                                showChatDialog = true
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = WhatsAppGreen),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("btn_open_chat_group")
                         ) {
-                            Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Groups, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Tes Kirim Pesan")
+                            Text("Chat Grup WA")
+                        }
+
+                        Button(
+                            onClick = {
+                                initialChatTargetType = ChatTargetType.TEACHER
+                                showChatDialog = true
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("btn_open_chat_contact")
+                        ) {
+                            Icon(Icons.Default.People, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Chat Kontak Guru")
                         }
                     }
                 }
@@ -288,7 +314,7 @@ fun DashboardScreen(
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 StatCard(
                     title = "Guru Terdaftar",
@@ -298,9 +324,16 @@ fun DashboardScreen(
                     modifier = Modifier.weight(1f)
                 )
                 StatCard(
+                    title = "Grup WhatsApp",
+                    value = "${groups.size}",
+                    subtitle = "Tersambung",
+                    icon = Icons.Default.Groups,
+                    modifier = Modifier.weight(1f)
+                )
+                StatCard(
                     title = "Jadwal Aktif",
                     value = "${schedules.count { it.isEnabled }}",
-                    subtitle = "Dari ${schedules.size} Jadwal",
+                    subtitle = "Dari ${schedules.size}",
                     icon = Icons.Default.Alarm,
                     modifier = Modifier.weight(1f)
                 )
@@ -491,13 +524,11 @@ fun DashboardScreen(
         }
     }
 
-    if (showTestMessageDialog) {
-        TestMessageDialog(
+    if (showChatDialog) {
+        SendChatDialog(
             viewModel = viewModel,
-            onDismiss = {
-                viewModel.clearManualSendResult()
-                showTestMessageDialog = false
-            }
+            initialTargetType = initialChatTargetType,
+            onDismiss = { showChatDialog = false }
         )
     }
 }

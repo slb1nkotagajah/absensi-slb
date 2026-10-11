@@ -62,6 +62,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.local.entity.ScheduleEntity
+import com.example.data.local.entity.TeacherEntity
+import com.example.data.local.entity.WhatsAppGroupEntity
 import com.example.ui.viewmodel.AppViewModel
 
 @Composable
@@ -70,6 +72,8 @@ fun ScheduleScreen(
     modifier: Modifier = Modifier
 ) {
     val schedules by viewModel.schedules.collectAsState()
+    val groups by viewModel.whatsAppGroups.collectAsState()
+    val teachers by viewModel.teachers.collectAsState()
     var editingSchedule by remember { mutableStateOf<ScheduleEntity?>(null) }
     var isAddingNew by remember { mutableStateOf(false) }
 
@@ -142,6 +146,8 @@ fun ScheduleScreen(
                 items(schedules) { schedule ->
                     ScheduleCard(
                         schedule = schedule,
+                        groups = groups,
+                        teachers = teachers,
                         onToggle = { enabled -> viewModel.toggleSchedule(schedule, enabled) },
                         onEdit = { editingSchedule = schedule },
                         onDelete = { viewModel.deleteSchedule(schedule) },
@@ -156,6 +162,8 @@ fun ScheduleScreen(
     if (isAddingNew) {
         ScheduleFormDialog(
             schedule = null,
+            groups = groups,
+            teachers = teachers,
             onDismiss = { isAddingNew = false },
             onSave = { title, targetType, targetValue, days, hour, minute, template, isEnabled ->
                 viewModel.saveSchedule(
@@ -177,6 +185,8 @@ fun ScheduleScreen(
     editingSchedule?.let { schedule ->
         ScheduleFormDialog(
             schedule = schedule,
+            groups = groups,
+            teachers = teachers,
             onDismiss = { editingSchedule = null },
             onSave = { title, targetType, targetValue, days, hour, minute, template, isEnabled ->
                 viewModel.saveSchedule(
@@ -199,6 +209,8 @@ fun ScheduleScreen(
 @Composable
 fun ScheduleCard(
     schedule: ScheduleEntity,
+    groups: List<WhatsAppGroupEntity> = emptyList(),
+    teachers: List<TeacherEntity> = emptyList(),
     onToggle: (Boolean) -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
@@ -277,14 +289,20 @@ fun ScheduleCard(
                 fontWeight = FontWeight.Medium
             )
 
+            val targetLabel = when (schedule.targetType) {
+                "ALL_TEACHERS" -> "Semua Kontak Guru Terdaftar"
+                "GROUP_WA" -> {
+                    val grp = groups.find { it.groupId == schedule.targetValue }
+                    if (grp != null) "Grup WA: ${grp.name} (${schedule.targetValue})" else "Grup WA (${schedule.targetValue})"
+                }
+                else -> {
+                    val tch = teachers.find { it.whatsappNumber == schedule.targetValue }
+                    if (tch != null) "Kontak Guru: ${tch.name} (${schedule.targetValue})" else "Kontak Khusus (${schedule.targetValue})"
+                }
+            }
+
             Text(
-                text = "🎯 Target: ${
-                    when (schedule.targetType) {
-                        "ALL_TEACHERS" -> "Semua Kontak Guru Terdaftar"
-                        "GROUP_WA" -> "Grup WA (${schedule.targetValue})"
-                        else -> "Kontak Khusus (${schedule.targetValue})"
-                    }
-                }",
+                text = "🎯 Target: $targetLabel",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -347,6 +365,8 @@ fun ScheduleCard(
 @Composable
 fun ScheduleFormDialog(
     schedule: ScheduleEntity?,
+    groups: List<WhatsAppGroupEntity> = emptyList(),
+    teachers: List<TeacherEntity> = emptyList(),
     onDismiss: () -> Unit,
     onSave: (
         title: String,
@@ -364,6 +384,8 @@ fun ScheduleFormDialog(
     var title by remember { mutableStateOf(schedule?.title ?: "Pengingat Absen Pulang") }
     var targetType by remember { mutableStateOf(schedule?.targetType ?: "ALL_TEACHERS") }
     var targetValue by remember { mutableStateOf(schedule?.targetValue ?: "") }
+    var groupDropdownExpanded by remember { mutableStateOf(false) }
+    var teacherDropdownExpanded by remember { mutableStateOf(false) }
     var selectedDays by remember {
         mutableStateOf(
             schedule?.daysOfWeek?.split(",")?.map { it.trim() }?.toSet()
@@ -523,30 +545,172 @@ fun ScheduleFormDialog(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(
                                 selected = targetType == "GROUP_WA",
-                                onClick = { targetType = "GROUP_WA" }
+                                onClick = {
+                                    targetType = "GROUP_WA"
+                                    if (targetValue.isBlank() && groups.isNotEmpty()) {
+                                        targetValue = groups.first().groupId
+                                    }
+                                }
                             )
                             Text("Kirim ke Grup WhatsApp")
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(
                                 selected = targetType == "SPECIFIC_CONTACTS",
-                                onClick = { targetType = "SPECIFIC_CONTACTS" }
+                                onClick = {
+                                    targetType = "SPECIFIC_CONTACTS"
+                                    if (targetValue.isBlank() && teachers.isNotEmpty()) {
+                                        targetValue = teachers.first().whatsappNumber
+                                    }
+                                }
                             )
-                            Text("Kirim ke Nomor Tertentu")
+                            Text("Kirim ke Kontak Tertentu")
                         }
                     }
 
-                    if (targetType != "ALL_TEACHERS") {
-                        OutlinedTextField(
-                            value = targetValue,
-                            onValueChange = { targetValue = it },
-                            label = {
-                                Text(if (targetType == "GROUP_WA") "ID Grup WhatsApp Fonnte (contoh: 1203630248849@g.us)" else "Nomor WhatsApp (pisahkan koma)")
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("input_schedule_target_value")
-                        )
+                    when (targetType) {
+                        "ALL_TEACHERS" -> {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "📢 Pengingat otomatis dikirimkan ke seluruh ${teachers.count { it.isActive }} kontak guru aktif dengan salam nama guru masing-masing.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(10.dp)
+                                )
+                            }
+                        }
+                        "GROUP_WA" -> {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (groups.isNotEmpty()) {
+                                    Box(modifier = Modifier.fillMaxWidth()) {
+                                        val currentGroupName = groups.find { it.groupId == targetValue }?.name ?: "Pilih Grup WhatsApp..."
+                                        OutlinedTextField(
+                                            value = currentGroupName,
+                                            onValueChange = {},
+                                            readOnly = true,
+                                            label = { Text("Pilih Dari Daftar Grup WA") },
+                                            trailingIcon = {
+                                                IconButton(onClick = { groupDropdownExpanded = !groupDropdownExpanded }) {
+                                                    Icon(
+                                                        imageVector = if (groupDropdownExpanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
+                                                        contentDescription = null
+                                                    )
+                                                }
+                                            },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("combobox_schedule_group")
+                                        )
+
+                                        Box(
+                                            modifier = Modifier
+                                                .matchParentSize()
+                                                .clickable { groupDropdownExpanded = true }
+                                        )
+
+                                        DropdownMenu(
+                                            expanded = groupDropdownExpanded,
+                                            onDismissRequest = { groupDropdownExpanded = false },
+                                            modifier = Modifier
+                                                .heightIn(max = 260.dp)
+                                                .fillMaxWidth(0.85f)
+                                        ) {
+                                            groups.forEach { g ->
+                                                DropdownMenuItem(
+                                                    text = {
+                                                        Column {
+                                                            Text(g.name, fontWeight = FontWeight.SemiBold)
+                                                            Text(g.groupId, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                        }
+                                                    },
+                                                    onClick = {
+                                                        targetValue = g.groupId
+                                                        groupDropdownExpanded = false
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                OutlinedTextField(
+                                    value = targetValue,
+                                    onValueChange = { targetValue = it },
+                                    label = { Text("ID Grup WhatsApp Fonnte (cth: 1203630248849@g.us)") },
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("input_schedule_target_value")
+                                )
+                            }
+                        }
+                        "SPECIFIC_CONTACTS" -> {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (teachers.isNotEmpty()) {
+                                    Box(modifier = Modifier.fillMaxWidth()) {
+                                        val currentTeacherName = teachers.find { it.whatsappNumber == targetValue }?.name ?: "Pilih Kontak Guru..."
+                                        OutlinedTextField(
+                                            value = currentTeacherName,
+                                            onValueChange = {},
+                                            readOnly = true,
+                                            label = { Text("Pilih Dari Kontak Guru Terdaftar") },
+                                            trailingIcon = {
+                                                IconButton(onClick = { teacherDropdownExpanded = !teacherDropdownExpanded }) {
+                                                    Icon(
+                                                        imageVector = if (teacherDropdownExpanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
+                                                        contentDescription = null
+                                                    )
+                                                }
+                                            },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("combobox_schedule_teacher")
+                                        )
+
+                                        Box(
+                                            modifier = Modifier
+                                                .matchParentSize()
+                                                .clickable { teacherDropdownExpanded = true }
+                                        )
+
+                                        DropdownMenu(
+                                            expanded = teacherDropdownExpanded,
+                                            onDismissRequest = { teacherDropdownExpanded = false },
+                                            modifier = Modifier
+                                                .heightIn(max = 260.dp)
+                                                .fillMaxWidth(0.85f)
+                                        ) {
+                                            teachers.forEach { t ->
+                                                DropdownMenuItem(
+                                                    text = {
+                                                        Column {
+                                                            Text(t.name, fontWeight = FontWeight.SemiBold)
+                                                            Text("${t.position} • ${t.whatsappNumber}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                        }
+                                                    },
+                                                    onClick = {
+                                                        targetValue = t.whatsappNumber
+                                                        teacherDropdownExpanded = false
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                OutlinedTextField(
+                                    value = targetValue,
+                                    onValueChange = { targetValue = it },
+                                    label = { Text("Nomor WhatsApp (pisahkan koma jika banyak)") },
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("input_schedule_target_value")
+                                )
+                            }
+                        }
                     }
                 }
 

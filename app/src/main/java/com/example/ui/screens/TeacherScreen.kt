@@ -18,11 +18,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Send
+import com.example.ui.components.ChatTargetType
+import com.example.ui.components.SendChatDialog
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
@@ -57,6 +61,7 @@ fun TeacherScreen(
     var editingTeacher by remember { mutableStateOf<TeacherEntity?>(null) }
     var isAddingNew by remember { mutableStateOf(false) }
     var sendDirectTeacher by remember { mutableStateOf<TeacherEntity?>(null) }
+    var showGeneralChatDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier.testTag("teacher_screen"),
@@ -88,6 +93,18 @@ fun TeacherScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = { showGeneralChatDialog = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("btn_teacher_screen_open_chat")
+                ) {
+                    Icon(Icons.Default.Groups, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Kirim Chat ke Grup WA / Kontak")
+                }
             }
 
             if (teachers.isEmpty()) {
@@ -237,40 +254,20 @@ fun TeacherScreen(
         )
     }
 
+    if (showGeneralChatDialog) {
+        SendChatDialog(
+            viewModel = viewModel,
+            initialTargetType = ChatTargetType.TEACHER,
+            onDismiss = { showGeneralChatDialog = false }
+        )
+    }
+
     sendDirectTeacher?.let { teacher ->
-        var customMsg by remember {
-            mutableStateOf("🔔 *PENGINGAT ABSEN PULANG*\n\nYth. Bapak/Ibu ${teacher.name},\nMohon jangan lupa melakukan presensi kepulangan sekolah hari ini. Terima kasih! 🙏")
-        }
-        AlertDialog(
-            onDismissRequest = { sendDirectTeacher = null },
-            title = { Text("Kirim Pengingat Langsung") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Tujuan: ${teacher.name} (${teacher.whatsappNumber})")
-                    OutlinedTextField(
-                        value = customMsg,
-                        onValueChange = { customMsg = it },
-                        label = { Text("Pesan") },
-                        minLines = 3,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.sendTestMessage(teacher.whatsappNumber, customMsg)
-                        sendDirectTeacher = null
-                    }
-                ) {
-                    Text("Kirim WA")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { sendDirectTeacher = null }) {
-                    Text("Batal")
-                }
-            }
+        SendChatDialog(
+            viewModel = viewModel,
+            initialTargetType = ChatTargetType.TEACHER,
+            initialTeacher = teacher,
+            onDismiss = { sendDirectTeacher = null }
         )
     }
 }

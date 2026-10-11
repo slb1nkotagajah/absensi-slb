@@ -43,3 +43,10 @@ sealed class FonnteResult<out T> {
     data class Success<T>(val data: T) : FonnteResult<T>()
     data class Error(val message: String) : FonnteResult<Nothing>()
 }
+
+data class FonnteGroupItem(
+    val id: String,
+    val name: String,
+    val member: String = ""
+)
+

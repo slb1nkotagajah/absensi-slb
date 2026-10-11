@@ -8,6 +8,7 @@ import com.example.data.local.entity.AttendanceEntity
 import com.example.data.local.entity.MessageLogEntity
 import com.example.data.local.entity.ScheduleEntity
 import com.example.data.local.entity.TeacherEntity
+import com.example.data.local.entity.WhatsAppGroupEntity
 import com.example.data.remote.FonnteDeviceResponse
 import com.example.data.remote.FonnteResult
 import com.example.data.repository.AttendanceRepository
@@ -38,6 +39,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val recentLogs: StateFlow<List<MessageLogEntity>> = repository.recentLogsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val whatsAppGroups: StateFlow<List<WhatsAppGroupEntity>> = repository.whatsAppGroupsFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val todayDate = com.example.util.DateTimeUtils.getTodayDateString()
@@ -79,6 +83,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _manualSendResult = MutableStateFlow<Pair<Boolean, String>?>(null)
     val manualSendResult: StateFlow<Pair<Boolean, String>?> = _manualSendResult.asStateFlow()
+
+    private val _isSyncingGroups = MutableStateFlow(false)
+    val isSyncingGroups: StateFlow<Boolean> = _isSyncingGroups.asStateFlow()
+
+    private val _groupSyncResult = MutableStateFlow<Pair<Boolean, String>?>(null)
+    val groupSyncResult: StateFlow<Pair<Boolean, String>?> = _groupSyncResult.asStateFlow()
 
     private val _sqlScriptContent = MutableStateFlow("")
     val sqlScriptContent: StateFlow<String> = _sqlScriptContent.asStateFlow()
@@ -147,6 +157,113 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val result = repository.sendManualMessage(target, message, "Pengujian Langsung")
             _manualSendResult.value = result
             _isSendingManual.value = false
+        }
+    }
+
+    fun sendChatMessage(
+        targetType: String,
+        targetId: String,
+        targetName: String,
+        messageText: String
+    ) {
+        viewModelScope.launch {
+            _isSendingManual.value = true
+            _manualSendResult.value = null
+            if (targetType == "ALL_TEACHERS") {
+                val (success, fail) = withContext(Dispatchers.IO) {
+                    repository.sendBroadcastToAllTeachers(messageText)
+                }
+                val isSuccess = success > 0
+                val detail = "Broadcast: $success sukses, $fail gagal."
+                _manualSendResult.value = Pair(isSuccess, detail)
+                showMessage(detail)
+            } else {
+                val formattedTarget = if (targetType == "GROUP_WA") {
+                    targetId.trim()
+                } else {
+                    formatPhoneNumber(targetId.trim())
+                }
+
+                val finalMessage = if (targetType == "TEACHER") {
+                    repository.formatMessage(messageText, targetName, _schoolName.value, _attendanceLink.value)
+                } else if (targetType == "GROUP_WA") {
+                    repository.formatMessage(messageText, "Bapak/Ibu Guru", _schoolName.value, _attendanceLink.value)
+                } else {
+                    repository.formatMessage(messageText, targetName, _schoolName.value, _attendanceLink.value)
+                }
+
+                val displayName = if (targetType == "GROUP_WA") "Grup WA: $targetName" else targetName
+                val result = withContext(Dispatchers.IO) {
+                    repository.sendManualMessage(formattedTarget, finalMessage, displayName)
+                }
+                _manualSendResult.value = result
+                if (result.first) {
+                    showMessage("Pesan berhasil dikirim ke $targetName")
+                } else {
+                    showMessage("Gagal: ${result.second}")
+                }
+            }
+            _isSendingManual.value = false
+        }
+    }
+
+    fun formatMessagePreview(template: String, recipientName: String = "Bapak/Ibu Guru"): String {
+        return repository.formatMessage(template, recipientName, _schoolName.value, _attendanceLink.value)
+    }
+
+    fun syncGroupsFromFonnte() {
+        viewModelScope.launch {
+            _isSyncingGroups.value = true
+            _groupSyncResult.value = null
+            val result = withContext(Dispatchers.IO) {
+                repository.syncGroupsFromFonnte()
+            }
+            _groupSyncResult.value = result
+            _isSyncingGroups.value = false
+            showMessage(result.second)
+        }
+    }
+
+    fun refreshFonnteGroupCache() {
+        viewModelScope.launch {
+            _isSyncingGroups.value = true
+            val result = withContext(Dispatchers.IO) {
+                repository.refreshFonnteGroupCache()
+            }
+            showMessage(result.second)
+            val syncResult = withContext(Dispatchers.IO) {
+                repository.syncGroupsFromFonnte()
+            }
+            _groupSyncResult.value = syncResult
+            _isSyncingGroups.value = false
+            showMessage(syncResult.second)
+        }
+    }
+
+    fun clearGroupSyncResult() {
+        _groupSyncResult.value = null
+    }
+
+    fun saveWhatsAppGroup(name: String, groupId: String, description: String = "") {
+        viewModelScope.launch {
+            if (name.isBlank() || groupId.isBlank()) {
+                showMessage("Nama grup dan ID grup WhatsApp wajib diisi.")
+                return@launch
+            }
+            val entity = WhatsAppGroupEntity(
+                name = name.trim(),
+                groupId = groupId.trim(),
+                description = description.trim()
+            )
+            repository.insertWhatsAppGroup(entity)
+            showMessage("Grup '${name}' berhasil disimpan!")
+        }
+    }
+
+    fun deleteWhatsAppGroup(group: WhatsAppGroupEntity) {
+        viewModelScope.launch {
+            repository.deleteWhatsAppGroup(group)
+            showMessage("Grup '${group.name}' dihapus.")
         }
     }
 

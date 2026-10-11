@@ -119,4 +119,76 @@ class FonnteRepository {
             FonnteResult.Error(e.localizedMessage ?: "Gagal terhubung ke Fonnte.")
         }
     }
+
+    suspend fun getWhatsAppGroups(token: String): FonnteResult<List<FonnteGroupItem>> {
+        return try {
+            val response = api.getWhatsAppGroups(token = token.trim())
+            val raw = response.body()?.string() ?: response.errorBody()?.string() ?: ""
+            Log.d("FonnteRepository", "getWhatsAppGroups raw: $raw")
+
+            if (raw.isNotBlank()) {
+                val groupList = mutableListOf<FonnteGroupItem>()
+                val trimmed = raw.trim()
+                if (trimmed.startsWith("[")) {
+                    val arr = org.json.JSONArray(trimmed)
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.getJSONObject(i)
+                        val id = obj.optString("id", "")
+                        val name = obj.optString("name", id)
+                        val member = obj.opt("member")?.toString() ?: ""
+                        if (id.isNotEmpty()) {
+                            groupList.add(FonnteGroupItem(id = id, name = name, member = member))
+                        }
+                    }
+                } else {
+                    val json = JSONObject(trimmed)
+                    val status = json.optBoolean("status", true)
+                    val data = json.opt("data")
+                    if (data is org.json.JSONArray) {
+                        for (i in 0 until data.length()) {
+                            val obj = data.getJSONObject(i)
+                            val id = obj.optString("id", "")
+                            val name = obj.optString("name", id)
+                            val member = obj.opt("member")?.toString() ?: ""
+                            if (id.isNotEmpty()) {
+                                groupList.add(FonnteGroupItem(id = id, name = name, member = member))
+                            }
+                        }
+                    } else if (!status) {
+                        val reason = json.optString("reason", json.optString("detail", "Gagal mengambil daftar grup WA."))
+                        return FonnteResult.Error(reason)
+                    }
+                }
+                FonnteResult.Success(groupList)
+            } else {
+                FonnteResult.Error("HTTP ${response.code()}: Respons server Fonnte kosong.")
+            }
+        } catch (e: Exception) {
+            Log.e("FonnteRepository", "Error fetching groups", e)
+            FonnteResult.Error(e.localizedMessage ?: "Gagal mengambil daftar grup dari Fonnte.")
+        }
+    }
+
+    suspend fun refreshGroupList(token: String): FonnteResult<String> {
+        return try {
+            val response = api.fetchWhatsAppGroups(token = token.trim())
+            val raw = response.body()?.string() ?: response.errorBody()?.string() ?: ""
+            Log.d("FonnteRepository", "fetchWhatsAppGroups raw: $raw")
+            if (raw.isNotBlank()) {
+                val json = JSONObject(raw)
+                val status = json.optBoolean("status", false)
+                val detail = json.optString("detail", json.optString("message", "Perintah pembaruan grup diproses."))
+                if (status) {
+                    FonnteResult.Success(detail)
+                } else {
+                    FonnteResult.Error(detail)
+                }
+            } else {
+                FonnteResult.Error("HTTP ${response.code()}: Tidak ada respon.")
+            }
+        } catch (e: Exception) {
+            Log.e("FonnteRepository", "Error refreshing groups", e)
+            FonnteResult.Error(e.localizedMessage ?: "Gagal memperbarui grup di Fonnte.")
+        }
+    }
 }
