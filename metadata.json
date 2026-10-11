@@ -1,0 +1,6 @@
+{
+  "name": "AbsenWA Guru",
+  "description": "Aplikasi kirim pesan otomatis WhatsApp via Fonnte untuk pengingat absen pulang guru dengan penjadwalan latar belakang, manajemen kontak/grup, dan database absen.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
